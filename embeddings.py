@@ -38,7 +38,8 @@ class SynthesisEngine:
     
     def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
         self.client = genai.Client(api_key=api_key)
-        self.model_name = model_name
+        self.model_name = "text-embedding-004"
+
     
     def _generate(self, prompt: str, history: list = None) -> str:
         """Generate content using the Gemini model."""
