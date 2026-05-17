@@ -11,16 +11,12 @@ try:
 except ImportError:
     pass
 
-import os
-import streamlit as st # Triggering reload
-from dotenv import load_dotenv
+import streamlit as st
 from google import genai
 from pdf_processor import extract_text_from_pdf, create_chunks_with_metadata, get_paper_label
 from vector_store import VectorStoreManager
 from embeddings import EmbeddingManager
 from synthesis_engine import SynthesisEngine
-
-load_dotenv()
 
 # ─── Page Config ───
 st.set_page_config(
@@ -88,7 +84,7 @@ section[data-testid="stSidebar"] { background: #0D0D1A; }
 def init_session_state():
     """Initialize all session state variables."""
     defaults = {
-        "api_key": os.getenv("GOOGLE_API_KEY", ""),
+        "api_key": "",
         "papers": {},          # {paper_id: {metadata, text, pages_text}}
         "paper_counter": 0,
         "vector_store": None,
@@ -98,6 +94,7 @@ def init_session_state():
         "current_mode": "chat",
         "initialized": False,
         "processing": False,
+        "key_validated": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -119,7 +116,7 @@ def initialize_engines(api_key: str):
             if "permission_denied" in err_msg or "leaked" in err_msg or "invalid" in err_msg:
                 st.error("🔑 **API Key is expired or revoked!** Your key was flagged as leaked. "
                          "Please generate a new one at [Google AI Studio](https://aistudio.google.com/apikey) "
-                         "and update your `.env` file.")
+                         "and enter it below.")
                 return False
             elif "403" in str(key_err) or "401" in str(key_err):
                 st.error(f"🔑 **API Key authentication failed:** {key_err}")
@@ -174,14 +171,57 @@ def render_sidebar():
         st.markdown('<p class="main-header" style="font-size:1.5rem;">🔬 Research Engine</p>', unsafe_allow_html=True)
         st.markdown("---")
 
-        # Auto-initialize if API key is present
-        if not st.session_state.initialized and st.session_state.api_key:
-            initialize_engines(st.session_state.api_key)
+        # ─── API Key Section ───
+        st.markdown("### 🔑 API Key")
 
         if st.session_state.initialized:
+            # Already connected — show status and option to change key
             st.success("✅ Engine Ready")
+            masked_key = st.session_state.api_key[:10] + "..." + st.session_state.api_key[-4:]
+            st.caption(f"Connected with: `{masked_key}`")
+            if st.button("🔄 Change API Key", use_container_width=True, type="secondary"):
+                st.session_state.api_key = ""
+                st.session_state.initialized = False
+                st.session_state.key_validated = False
+                st.session_state.embedding_manager = None
+                st.session_state.synthesis_engine = None
+                st.session_state.vector_store = None
+                st.session_state.papers = {}
+                st.session_state.paper_counter = 0
+                st.session_state.chat_history = []
+                st.rerun()
         else:
-            st.error("⚠️ GOOGLE_API_KEY not found. Please add it to your environment variables.")
+            # Show API key input
+            st.markdown(
+                '<p style="color:#9CA3AF;font-size:0.85rem;">'
+                'Enter your Google Gemini API key to get started. '
+                'Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#6C63FF;">'
+                'Google AI Studio</a>.</p>',
+                unsafe_allow_html=True,
+            )
+            api_key_input = st.text_input(
+                "Google Gemini API Key",
+                type="password",
+                placeholder="AIzaSy...",
+                key="api_key_input",
+                help="Your key is only stored in this session and never saved to disk.",
+            )
+            if st.button("🚀 Connect", use_container_width=True, type="primary"):
+                if api_key_input and api_key_input.strip():
+                    st.session_state.api_key = api_key_input.strip()
+                    with st.spinner("🔍 Validating API key..."):
+                        success = initialize_engines(st.session_state.api_key)
+                    if success:
+                        st.session_state.key_validated = True
+                        st.rerun()
+                    else:
+                        st.session_state.api_key = ""
+                else:
+                    st.warning("⚠️ Please paste your API key above.")
+
+        # Only show the rest of the sidebar if engine is initialized
+        if not st.session_state.initialized:
+            return
 
         st.markdown("---")
         st.markdown("### 📚 Upload Papers")
@@ -191,7 +231,7 @@ def render_sidebar():
             help="Upload 3-5 research papers on a related topic",
         )
 
-        if uploaded_files and st.session_state.initialized:
+        if uploaded_files:
             new_files = [f for f in uploaded_files
                          if f.name not in [p["metadata"]["filename"] for p in st.session_state.papers.values()]]
             if new_files and st.button(f"📥 Process {len(new_files)} New Paper(s)", use_container_width=True):
@@ -242,8 +282,8 @@ def render_home():
     st.markdown("<br>", unsafe_allow_html=True)
 
     if num_papers == 0:
-        if not st.session_state.api_key:
-            st.error("⚠️ Please configure your GOOGLE_API_KEY in the environment variables to get started.")
+        if not st.session_state.initialized:
+            st.info("🔑 **Enter your Google Gemini API key** in the sidebar to get started.")
         else:
             st.info("👈 **Get started**: Upload 2–5 research papers using the sidebar.")
         return
