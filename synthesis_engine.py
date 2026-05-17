@@ -3,6 +3,7 @@ Synthesis Engine for Research Synthesis & Comparison Engine.
 Orchestrates Gemini LLM calls for cross-document analysis, comparison, and synthesis.
 """
 
+import time
 from typing import List, Dict, Optional
 from google import genai
 from google.genai import types
@@ -36,12 +37,19 @@ class SynthesisEngine:
     - Technical methodology synthesis
     """
     
+    # Models tried in order when quota is exhausted
+    FALLBACK_MODELS = [
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+    ]
+
     def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
         self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
-    
-    def _generate(self, prompt: str, history: list = None) -> str:
-        """Generate content using the Gemini model."""
+
+    def _build_contents(self, prompt: str, history: list = None):
         contents = []
         if history:
             for turn in history[-6:]:
@@ -53,19 +61,54 @@ class SynthesisEngine:
             role="user",
             parts=[types.Part.from_text(text=prompt)],
         ))
-        
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.3,
-                top_p=0.8,
-                top_k=40,
-                max_output_tokens=4096,
-            ),
+        return contents
+
+    def _generate(self, prompt: str, history: list = None) -> str:
+        """Generate content using the Gemini model, with fallback on quota errors."""
+        contents = self._build_contents(prompt, history)
+        config = types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.3,
+            top_p=0.8,
+            top_k=40,
+            max_output_tokens=4096,
         )
-        return response.text
+
+        # Build model list: preferred model first, then fallbacks (no duplicates)
+        models_to_try = [self.model_name] + [
+            m for m in self.FALLBACK_MODELS if m != self.model_name
+        ]
+
+        last_error = None
+        for model in models_to_try:
+            try:
+                response = self.client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+                # If we succeeded on a fallback, remember it for this session
+                if model != self.model_name:
+                    self.model_name = model
+                return response.text
+            except Exception as e:
+                err = str(e)
+                if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                    last_error = e
+                    # Brief pause before trying next model
+                    time.sleep(2)
+                    continue
+                # Non-quota error — re-raise immediately
+                raise
+
+        # All models exhausted
+        raise Exception(
+            "⚠️ All Gemini models are quota-exhausted for today. "
+            "Please try again after midnight Pacific Time, use a different "
+            "Google account's API key, or enable billing at "
+            "https://aistudio.google.com. "
+            f"Last error: {last_error}"
+        )
     
     def answer_with_citations(self, query, grouped_context, paper_info, chat_history=None):
         """Answer a question with paper-wise citations."""
