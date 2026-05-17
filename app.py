@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Research Synthesis & Comparison Engine
 A RAG-powered application for cross-document analysis of research papers.
@@ -11,6 +12,15 @@ try:
 except ImportError:
     pass
 
+import sys
+import io
+
+# Force UTF-8 stdout/stderr on Windows to prevent UnicodeEncodeError
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 import streamlit as st
 from google import genai
 from pdf_processor import extract_text_from_pdf, create_chunks_with_metadata, get_paper_label
@@ -18,15 +28,15 @@ from vector_store import VectorStoreManager
 from embeddings import EmbeddingManager
 from synthesis_engine import SynthesisEngine
 
-# ─── Page Config ───
+# --- Page Config ---
 st.set_page_config(
     page_title="Research Synthesis Engine",
-    page_icon="🔬",
+    page_icon="\U0001f52c",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ─── Custom CSS ───
+# --- Custom CSS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -81,6 +91,34 @@ section[data-testid="stSidebar"] { background: #0D0D1A; }
 """, unsafe_allow_html=True)
 
 
+# --- Emoji constants (use Unicode escapes to avoid source-file encoding issues) ---
+E_MICROSCOPE = "\U0001f52c"
+E_KEY = "\U0001f511"
+E_CHECK = "\u2705"
+E_REFRESH = "\U0001f504"
+E_ROCKET = "\U0001f680"
+E_WARN = "\u26a0\ufe0f"
+E_X = "\u274c"
+E_BOOKS = "\U0001f4da"
+E_INBOX = "\U0001f4e5"
+E_DOC = "\U0001f4c4"
+E_SCISSORS = "\u2702\ufe0f"
+E_ABACUS = "\U0001f9ee"
+E_FLOPPY = "\U0001f4be"
+E_CLIPBOARD = "\U0001f4cb"
+E_WASTEBASKET = "\U0001f5d1\ufe0f"
+E_SEARCH = "\U0001f50d"
+E_CHAT = "\U0001f4ac"
+E_CHART = "\U0001f4ca"
+E_SCALES = "\u2696\ufe0f"
+E_TARGET = "\U0001f3af"
+E_MEMO = "\U0001f4dd"
+E_POINT_LEFT = "\U0001f448"
+E_SCIENTIST = "\U0001f9d1\u200d\U0001f52c"
+E_ROBOT = "\U0001f916"
+E_BUST = "\U0001f464"
+
+
 def init_session_state():
     """Initialize all session state variables."""
     defaults = {
@@ -104,7 +142,7 @@ def init_session_state():
 def initialize_engines(api_key: str):
     """Initialize the embedding manager, vector store, and synthesis engine."""
     if not api_key:
-        st.error("⚠️ Please provide a Google Gemini API key.")
+        st.error(E_WARN + " Please provide a Google Gemini API key.")
         return False
     try:
         # Quick validation: try to list models to verify the key works
@@ -114,22 +152,22 @@ def initialize_engines(api_key: str):
         except Exception as key_err:
             err_msg = str(key_err).lower()
             if "permission_denied" in err_msg or "leaked" in err_msg or "invalid" in err_msg:
-                st.error("🔑 **API Key is expired or revoked!** Your key was flagged as leaked. "
+                st.error(E_KEY + " **API Key is expired or revoked!** Your key was flagged as leaked. "
                          "Please generate a new one at [Google AI Studio](https://aistudio.google.com/apikey) "
                          "and enter it below.")
                 return False
             elif "403" in str(key_err) or "401" in str(key_err):
-                st.error(f"🔑 **API Key authentication failed:** {key_err}")
+                st.error(E_KEY + " **API Key authentication failed:** " + str(key_err))
                 return False
             # For other errors (e.g., network), proceed anyway
-        
+
         st.session_state.embedding_manager = EmbeddingManager(api_key)
         st.session_state.vector_store = VectorStoreManager("./chroma_db")
         st.session_state.synthesis_engine = SynthesisEngine(api_key)
         st.session_state.initialized = True
         return True
     except Exception as e:
-        st.error(f"❌ Initialization failed: {e}")
+        st.error(E_X + " Initialization failed: " + str(e))
         return False
 
 
@@ -138,17 +176,17 @@ def process_uploaded_pdf(pdf_file):
     paper_id = get_paper_label(st.session_state.paper_counter)
     st.session_state.paper_counter += 1
 
-    with st.spinner(f"📄 Extracting text from {pdf_file.name}..."):
+    with st.spinner(E_DOC + " Extracting text from " + pdf_file.name + "..."):
         full_text, metadata, pages_text = extract_text_from_pdf(pdf_file)
 
-    with st.spinner(f"✂️ Chunking {paper_id}..."):
+    with st.spinner(E_SCISSORS + " Chunking " + paper_id + "..."):
         chunks = create_chunks_with_metadata(full_text, pages_text, metadata, paper_id)
 
-    with st.spinner(f"🧮 Generating embeddings for {paper_id} ({len(chunks)} chunks)..."):
+    with st.spinner(E_ABACUS + " Generating embeddings for " + paper_id + " (" + str(len(chunks)) + " chunks)..."):
         texts = [c["text"] for c in chunks]
         embeddings = st.session_state.embedding_manager.embed_texts(texts)
 
-    with st.spinner(f"💾 Storing {paper_id} in vector database..."):
+    with st.spinner(E_FLOPPY + " Storing " + paper_id + " in vector database..."):
         st.session_state.vector_store.add_chunks(chunks, embeddings)
 
     st.session_state.papers[paper_id] = {
@@ -168,18 +206,18 @@ def get_label_class(idx: int) -> str:
 def render_sidebar():
     """Render the sidebar with config and paper management."""
     with st.sidebar:
-        st.markdown('<p class="main-header" style="font-size:1.5rem;">🔬 Research Engine</p>', unsafe_allow_html=True)
+        st.markdown('<p class="main-header" style="font-size:1.5rem;">' + E_MICROSCOPE + ' Research Engine</p>', unsafe_allow_html=True)
         st.markdown("---")
 
-        # ─── API Key Section ───
-        st.markdown("### 🔑 API Key")
+        # --- API Key Section ---
+        st.markdown("### " + E_KEY + " API Key")
 
         if st.session_state.initialized:
-            # Already connected — show status and option to change key
-            st.success("✅ Engine Ready")
+            # Already connected - show status and option to change key
+            st.success(E_CHECK + " Engine Ready")
             masked_key = st.session_state.api_key[:10] + "..." + st.session_state.api_key[-4:]
-            st.caption(f"Connected with: `{masked_key}`")
-            if st.button("🔄 Change API Key", use_container_width=True, type="secondary"):
+            st.caption("Connected with: `" + masked_key + "`")
+            if st.button(E_REFRESH + " Change API Key", use_container_width=True, type="secondary"):
                 st.session_state.api_key = ""
                 st.session_state.initialized = False
                 st.session_state.key_validated = False
@@ -206,10 +244,10 @@ def render_sidebar():
                 key="api_key_input",
                 help="Your key is only stored in this session and never saved to disk.",
             )
-            if st.button("🚀 Connect", use_container_width=True, type="primary"):
+            if st.button(E_ROCKET + " Connect", use_container_width=True, type="primary"):
                 if api_key_input and api_key_input.strip():
                     st.session_state.api_key = api_key_input.strip()
-                    with st.spinner("🔍 Validating API key..."):
+                    with st.spinner(E_SEARCH + " Validating API key..."):
                         success = initialize_engines(st.session_state.api_key)
                     if success:
                         st.session_state.key_validated = True
@@ -217,14 +255,14 @@ def render_sidebar():
                     else:
                         st.session_state.api_key = ""
                 else:
-                    st.warning("⚠️ Please paste your API key above.")
+                    st.warning(E_WARN + " Please paste your API key above.")
 
         # Only show the rest of the sidebar if engine is initialized
         if not st.session_state.initialized:
             return
 
         st.markdown("---")
-        st.markdown("### 📚 Upload Papers")
+        st.markdown("### " + E_BOOKS + " Upload Papers")
         uploaded_files = st.file_uploader(
             "Upload PDFs (up to 5)", type=["pdf"],
             accept_multiple_files=True, key="pdf_uploader",
@@ -234,31 +272,35 @@ def render_sidebar():
         if uploaded_files:
             new_files = [f for f in uploaded_files
                          if f.name not in [p["metadata"]["filename"] for p in st.session_state.papers.values()]]
-            if new_files and st.button(f"📥 Process {len(new_files)} New Paper(s)", use_container_width=True):
+            if new_files and st.button(E_INBOX + " Process " + str(len(new_files)) + " New Paper(s)", use_container_width=True):
                 for f in new_files:
                     if len(st.session_state.papers) >= 5:
                         st.warning("Maximum 5 papers allowed.")
                         break
                     pid = process_uploaded_pdf(f)
-                    st.success(f"✅ {pid}: {f.name}")
+                    st.success(E_CHECK + " " + pid + ": " + f.name)
                 st.rerun()
 
         # Show loaded papers
         if st.session_state.papers:
             st.markdown("---")
-            st.markdown("### 📋 Loaded Papers")
+            st.markdown("### " + E_CLIPBOARD + " Loaded Papers")
             for idx, (pid, info) in enumerate(st.session_state.papers.items()):
                 lbl = get_label_class(idx)
-                st.markdown(f"""<div class="paper-card">
-                    <span class="paper-label {lbl}">{pid}</span>
-                    <div style="font-weight:600;font-size:0.9rem;">{info['metadata']['title']}</div>
-                    <div style="color:#9CA3AF;font-size:0.75rem;">
-                        👤 {info['metadata']['author']} · 📄 {info['metadata']['num_pages']} pages · 🧩 {info['chunk_count']} chunks
-                    </div>
-                </div>""", unsafe_allow_html=True)
+                st.markdown(
+                    '<div class="paper-card">'
+                    '<span class="paper-label ' + lbl + '">' + pid + '</span>'
+                    '<div style="font-weight:600;font-size:0.9rem;">' + info['metadata']['title'] + '</div>'
+                    '<div style="color:#9CA3AF;font-size:0.75rem;">'
+                    + E_BUST + ' ' + info['metadata']['author']
+                    + ' &middot; ' + E_DOC + ' ' + str(info['metadata']['num_pages']) + ' pages'
+                    + ' &middot; ' + str(info['chunk_count']) + ' chunks'
+                    + '</div></div>',
+                    unsafe_allow_html=True,
+                )
 
             st.markdown("---")
-            if st.button("🗑️ Clear All Papers", use_container_width=True, type="secondary"):
+            if st.button(E_WASTEBASKET + " Clear All Papers", use_container_width=True, type="secondary"):
                 st.session_state.vector_store.clear_collection()
                 st.session_state.papers = {}
                 st.session_state.paper_counter = 0
@@ -268,7 +310,7 @@ def render_sidebar():
 
 def render_home():
     """Render the home / landing view."""
-    st.markdown('<p class="main-header">🔬 Research Synthesis & Comparison Engine</p>', unsafe_allow_html=True)
+    st.markdown('<p class="main-header">' + E_MICROSCOPE + ' Research Synthesis &amp; Comparison Engine</p>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">Upload research papers and unlock cross-document insights powered by Gemini AI</p>', unsafe_allow_html=True)
 
     # Stats row
@@ -277,29 +319,29 @@ def render_home():
     c1, c2, c3 = st.columns(3)
     for col, num, label in [(c1, num_papers, "Papers Loaded"), (c2, num_chunks, "Total Chunks"), (c3, len(st.session_state.chat_history) // 2, "Conversations")]:
         with col:
-            st.markdown(f'<div class="stat-box"><div class="stat-num">{num}</div><div class="stat-label">{label}</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="stat-box"><div class="stat-num">' + str(num) + '</div><div class="stat-label">' + label + '</div></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     if num_papers == 0:
         if not st.session_state.initialized:
-            st.info("🔑 **Enter your Google Gemini API key** in the sidebar to get started.")
+            st.info(E_KEY + " **Enter your Google Gemini API key** in the sidebar to get started.")
         else:
-            st.info("👈 **Get started**: Upload 2–5 research papers using the sidebar.")
+            st.info(E_POINT_LEFT + " **Get started**: Upload 2-5 research papers using the sidebar.")
         return
 
     # Mode selection
-    st.markdown("### 🎯 Choose Analysis Mode")
+    st.markdown("### " + E_TARGET + " Choose Analysis Mode")
     m1, m2, m3, m4 = st.columns(4)
     modes = [
-        (m1, "chat", "💬", "Research Q&A", "Ask questions with paper-wise citations"),
-        (m2, "summary", "📊", "Cross-Doc Summary", "Unified summary across all papers"),
-        (m3, "compare", "⚖️", "Compare Findings", "Compare specific aspects between papers"),
-        (m4, "methodology", "🔬", "Methodology Synthesis", "Deep-dive into technical methods"),
+        (m1, "chat", E_CHAT, "Research Q&A", "Ask questions with paper-wise citations"),
+        (m2, "summary", E_CHART, "Cross-Doc Summary", "Unified summary across all papers"),
+        (m3, "compare", E_SCALES, "Compare Findings", "Compare specific aspects between papers"),
+        (m4, "methodology", E_MICROSCOPE, "Methodology Synthesis", "Deep-dive into technical methods"),
     ]
     for col, mode, icon, title, desc in modes:
         with col:
-            if st.button(f"{icon} {title}", key=f"mode_{mode}", use_container_width=True,
+            if st.button(icon + " " + title, key="mode_" + mode, use_container_width=True,
                          help=desc, type="primary" if st.session_state.current_mode == mode else "secondary"):
                 st.session_state.current_mode = mode
                 st.rerun()
@@ -307,22 +349,22 @@ def render_home():
 
 def render_chat_mode():
     """Render the interactive Q&A chat mode."""
-    st.markdown("### 💬 Research Q&A with Citations")
-    st.caption("Ask any question — the engine will retrieve relevant passages and cite each paper.")
+    st.markdown("### " + E_CHAT + " Research Q&A with Citations")
+    st.caption("Ask any question -- the engine will retrieve relevant passages and cite each paper.")
 
     # Display chat history
     for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"], avatar="🧑‍🔬" if msg["role"] == "user" else "🤖"):
+        with st.chat_message(msg["role"], avatar=E_SCIENTIST if msg["role"] == "user" else E_ROBOT):
             st.markdown(msg["content"])
 
     # Chat input
     if prompt := st.chat_input("Ask about your research papers..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user", avatar="🧑‍🔬"):
+        with st.chat_message("user", avatar=E_SCIENTIST):
             st.markdown(prompt)
 
-        with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("🔍 Searching across papers & synthesizing..."):
+        with st.chat_message("assistant", avatar=E_ROBOT):
+            with st.spinner(E_SEARCH + " Searching across papers & synthesizing..."):
                 # Get query embedding
                 query_emb = st.session_state.embedding_manager.embed_query(prompt)
                 paper_ids = list(st.session_state.papers.keys())
@@ -337,11 +379,11 @@ def render_chat_mode():
 
 def render_summary_mode():
     """Render the cross-document summary mode."""
-    st.markdown("### 📊 Cross-Document Summary")
+    st.markdown("### " + E_CHART + " Cross-Document Summary")
     st.caption("Generate a unified synthesis that covers core themes of all uploaded papers.")
 
-    if st.button("🚀 Generate Cross-Document Summary", use_container_width=True, type="primary"):
-        with st.spinner("📝 Analyzing all papers and synthesizing... (this may take a moment)"):
+    if st.button(E_ROCKET + " Generate Cross-Document Summary", use_container_width=True, type="primary"):
+        with st.spinner(E_MEMO + " Analyzing all papers and synthesizing... (this may take a moment)"):
             all_contexts = {pid: info["text"] for pid, info in st.session_state.papers.items()}
             paper_info = [{"paper_id": pid, **info["metadata"]} for pid, info in st.session_state.papers.items()]
             summary = st.session_state.synthesis_engine.generate_cross_document_summary(all_contexts, paper_info)
@@ -349,11 +391,11 @@ def render_summary_mode():
 
     # Individual paper summaries
     st.markdown("---")
-    st.markdown("### 📄 Individual Paper Summaries")
+    st.markdown("### " + E_DOC + " Individual Paper Summaries")
     for pid, info in st.session_state.papers.items():
-        with st.expander(f"📄 {pid}: {info['metadata']['title']}"):
-            if st.button(f"Generate Summary for {pid}", key=f"sum_{pid}"):
-                with st.spinner(f"Summarizing {pid}..."):
+        with st.expander(E_DOC + " " + pid + ": " + info['metadata']['title']):
+            if st.button("Generate Summary for " + pid, key="sum_" + pid):
+                with st.spinner("Summarizing " + pid + "..."):
                     summary = st.session_state.synthesis_engine.generate_paper_summary(
                         info["text"], {"paper_id": pid, **info["metadata"]}
                     )
@@ -362,14 +404,14 @@ def render_summary_mode():
 
 def render_compare_mode():
     """Render the findings comparison mode."""
-    st.markdown("### ⚖️ Compare Findings Across Papers")
+    st.markdown("### " + E_SCALES + " Compare Findings Across Papers")
     st.caption("Enter an aspect or topic to compare how different papers address it.")
 
-    aspect = st.text_input("🔍 What aspect do you want to compare?",
+    aspect = st.text_input(E_SEARCH + " What aspect do you want to compare?",
                            placeholder="e.g., model accuracy, energy efficiency, training cost...")
 
-    if aspect and st.button("⚖️ Compare Now", type="primary", use_container_width=True):
-        with st.spinner("🔍 Retrieving and comparing..."):
+    if aspect and st.button(E_SCALES + " Compare Now", type="primary", use_container_width=True):
+        with st.spinner(E_SEARCH + " Retrieving and comparing..."):
             query_emb = st.session_state.embedding_manager.embed_query(aspect)
             paper_ids = list(st.session_state.papers.keys())
             grouped = st.session_state.vector_store.query_multiple_papers(query_emb, paper_ids, n_per_paper=4)
@@ -380,15 +422,15 @@ def render_compare_mode():
 
 def render_methodology_mode():
     """Render the methodology synthesis mode."""
-    st.markdown("### 🔬 Technical Methodology Synthesis")
+    st.markdown("### " + E_MICROSCOPE + " Technical Methodology Synthesis")
     st.caption("Deep-dive into the technical methods used across your papers.")
 
-    topic = st.text_input("🔍 Methodology topic to synthesize",
+    topic = st.text_input(E_SEARCH + " Methodology topic to synthesize",
                           placeholder="e.g., transformer architecture, data augmentation, evaluation metrics...")
 
-    if topic and st.button("🔬 Synthesize Methodologies", type="primary", use_container_width=True):
-        with st.spinner("🔍 Extracting methodology details across papers..."):
-            query = f"methodology approach method technique {topic}"
+    if topic and st.button(E_MICROSCOPE + " Synthesize Methodologies", type="primary", use_container_width=True):
+        with st.spinner(E_SEARCH + " Extracting methodology details across papers..."):
+            query = "methodology approach method technique " + topic
             query_emb = st.session_state.embedding_manager.embed_query(query)
             paper_ids = list(st.session_state.papers.keys())
             grouped = st.session_state.vector_store.query_multiple_papers(query_emb, paper_ids, n_per_paper=4)
@@ -397,7 +439,7 @@ def render_methodology_mode():
         st.markdown(synthesis)
 
 
-# ─── MAIN ───
+# --- MAIN ---
 def main():
     init_session_state()
     render_sidebar()
