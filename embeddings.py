@@ -18,7 +18,7 @@ class EmbeddingManager:
             api_key: Google Gemini API key
         """
         self.client = genai.Client(api_key=api_key)
-        self.model_name = "text-embedding-004"
+        self.model_name = "gemini-embedding-001"
     
     def embed_texts(self, texts: List[str], task_type: str = "RETRIEVAL_DOCUMENT") -> List[List[float]]:
         """
